@@ -1,0 +1,15 @@
+Source: pabble-mpi
+Section: utils
+Priority: extra
+Maintainer: Nicholas Ng <nickng@projectfate.org>
+Build-Depends: debhelper (>= 8.0.0)
+Standards-Version: 3.9.4
+Homepage: http://www.doc.ic.ac.uk/~cn06/sessionc
+Vcs-Git: git://github.com/sessionc/pabble-mpi.git
+
+Package: pabble-mpi
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}, libsesstype (>=1.1.0-2), libscribble (>=1.1.0-2~scribble0.2+pabble)
+Description: Scribble to MPI conversion tool
+ Binary tool to convert Scribble/Pabble (endpoint) communication protocols to MPI/C code.
+ This is part of Session C programming framework. See http://www.doc.ic.ac.uk/~cn06/sessionc for details.

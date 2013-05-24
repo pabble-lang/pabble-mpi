@@ -1,0 +1,7 @@
+files
+pabble-mpi.*
+pabble-mpi/
+tmp/
+!*.dirs
+!*.install
+!*.examples
