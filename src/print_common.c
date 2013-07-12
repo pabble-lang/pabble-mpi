@@ -247,10 +247,10 @@ void mpi_fprint_msg_cond(FILE *stream, st_tree *tree, const msg_cond_t *msg_cond
 
       case ST_EXPR_TYPE_RNG:
         // if ( Worker_RANK(1) <= rank && rank <= Worker_RANK(N) )
-        mpi_fprintf(stream, "if ( %s_RANK(", RANK_VARIABLE, msg_cond->name);
+        mpi_fprintf(stream, "if ( %s_RANK(", msg_cond->name);
         mpi_fprint_expr(stream, msg_cond->param[0]->rng->from);
         mpi_fprintf(stream, ") <= %s && %s <= %s_RANK(", RANK_VARIABLE, RANK_VARIABLE, msg_cond->name);
-        mpi_fprint_expr(stream, msg_cond->param[0]->rng->from);
+        mpi_fprint_expr(stream, msg_cond->param[0]->rng->to);
         mpi_fprintf(stream, ") ) ");
         break;
 
