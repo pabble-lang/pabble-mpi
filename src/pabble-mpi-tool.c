@@ -94,7 +94,6 @@ int main(int argc, char *argv[])
   if (tree->root != 0) {
     st_node_normalise(tree->root);
     if (verbosity_level > 2) st_tree_print(tree);
-    scribble_print(tree);
     if (output_handle != NULL) {
       if (verbosity_level > 0) fprintf(stderr, "Writing MPI\n");
       mpi_print(output_handle, tree);
