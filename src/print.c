@@ -64,7 +64,7 @@ void mpi_fprint_choice(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tre
   indent++;
 
   // Representing all branches
-  for (int child=0; node->nchild; child++) {
+  for (int child=0; child<node->nchild; child++) {
 
     indent++;
     mpi_fprint_node(pre_stream, stream, post_stream, tree, node->children[child], indent);
@@ -118,12 +118,14 @@ void mpi_fprint_choice(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tre
 
   indent--;
 
-  mpi_fprintf(stream, "} // rank selection\n");
+  mpi_fprintf(stream, "%*s} // rank selection\n", indent, SPACE);
 }
 
 
 void mpi_fprint_node(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent)
 {
+  assert(node != NULL);
+
   switch (node->type) {
     case ST_NODE_ROOT:      mpi_fprint_root(pre_stream, stream, post_stream, tree, node, indent);      break;
     case ST_NODE_SEND:      mpi_fprint_send(pre_stream, stream, post_stream, tree, node, indent);      break;
@@ -134,6 +136,8 @@ void mpi_fprint_node(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree 
     case ST_NODE_CONTINUE:  mpi_fprint_continue(pre_stream, stream, post_stream, tree, node, indent);  break;
     case ST_NODE_FOR:       mpi_fprint_for(pre_stream, stream, post_stream, tree, node, indent);       break;
     case ST_NODE_ALLREDUCE: mpi_fprint_allreduce(pre_stream, stream, post_stream, tree, node, indent); break;
+    case ST_NODE_IFBLK:     mpi_fprint_ifblk(pre_stream, stream, post_stream, tree, node, indent);     break;
+    case ST_NODE_ONEOF:     mpi_fprint_oneof(pre_stream, stream, post_stream, tree, node, indent);     break;
 
     case ST_NODE_SENDRECV:  assert(0/* Global protocol not possible */); break;
     default:                fprintf(stderr, "%s:%d %s Unknown node type: %d\n", __FILE__, __LINE__, __FUNCTION__, node->type);
@@ -172,6 +176,7 @@ void mpi_fprint_recur(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree
   scribble_fprint_node(stream, node, indent+1);
   mpi_fprintf(stream, "%*s*/\n", indent, SPACE);
 
+  mpi_fprintf(stream, "#pragma pabble loop\n");
   mpi_fprintf(stream, "%*swhile (1/* CHANGEME */) {\n", indent, SPACE);
 
   mpi_fprint_children(pre_stream, stream, post_stream, tree, node, indent);
@@ -211,6 +216,9 @@ void mpi_fprint_for(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *
   mpi_fprint_expr(stream, node->forloop->range->to);
   mpi_fprintf(stream, "; %s++) {\n", node->forloop->range->bindvar);
   indent++;
+  if (node->forloop->except != NULL) {
+    mpi_fprintf(stream, "%*sif (%s!=%s) continue; // SKIP\n", indent, SPACE, node->forloop->range->bindvar, node->forloop->except);
+  }
   for (int child=0; child<node->nchild; ++child) {
     mpi_fprint_node(pre_stream, stream, post_stream, tree, node->children[child], indent);
   }
@@ -248,6 +256,10 @@ void mpi_fprint(FILE *stream, st_tree *tree)
   FILE *tail_fp = fdopen(mkstemp(tail_tmpfile), "w+");
   unlink(tail_tmpfile);
 
+#ifdef __DEBUG__
+  fprintf(stderr, "DEBUG/%s:%d headers..\n", __FUNCTION__, __LINE__);
+#endif
+
   /**
    * Includes.
    */
@@ -256,6 +268,10 @@ void mpi_fprint(FILE *stream, st_tree *tree)
   mpi_fprintf(stream, "#include <stdlib.h>\n");
   mpi_fprintf(stream, "#include <string.h>\n");
   mpi_fprintf(stream, "#include <mpi.h>\n\n");
+
+#ifdef __DEBUG__
+  fprintf(stderr, "DEBUG/%s:%d auto generate label/tags..\n", __FUNCTION__, __LINE__);
+#endif
 
   /**
    * Define MPI tags / Pabble message labels as constants.
@@ -271,6 +287,9 @@ void mpi_fprint(FILE *stream, st_tree *tree)
     }
   }
 
+#ifdef __DEBUG__
+  fprintf(stderr, "DEBUG/%s:%d rank conversion macros..\n", __FUNCTION__, __LINE__);
+#endif
 
   /**
    * Define macros to convert multi-dimension roles to MPI ranks.
@@ -280,16 +299,22 @@ void mpi_fprint(FILE *stream, st_tree *tree)
    *     => declared constants (eg. N) = find value (if defined), use as is otherwise
    * (3) Derive and bind values of constants from SIZE_VARIABLE
    */
-  mpi_fprintf(stream, "\n/*** Scirbble parameterised role to MPI rank conversion macros ***/\n");
+  mpi_fprintf(stream, "\n/*** Scribble parameterised role to MPI rank conversion macros ***/\n");
   int mpi_nroles = 0;
   for (int role=0; role<tree->info->nrole; role++) {
     switch (tree->info->roles[role]->dimen) {
       case 0: // Ordinary role, use defined rank value
+#ifdef __DEBUG__
+  fprintf(stderr, "DEBUG/%s:%d rank conversion macro for %s..\n", __FUNCTION__, __LINE__, tree->info->roles[role]->name);
+#endif
         mpi_fprintf(stream, "#define %s_RANK %d\n\n", tree->info->roles[role]->name, mpi_nroles);
         mpi_nroles++;
         break;
       case 1:
       case 2:
+#ifdef __DEBUG__
+  fprintf(stderr, "DEBUG/%s:%d rank conversion macro for %s..\n", __FUNCTION__, __LINE__, tree->info->roles[role]->name);
+#endif
         assert(tree->info->roles[role]->dimen <= 2 /* Won't work with > 2 dimen for now */);
 
         mpi_fprintf(stream, "#define %s_RANK(", tree->info->roles[role]->name);
@@ -320,6 +345,10 @@ void mpi_fprint(FILE *stream, st_tree *tree)
         break;
     }
   }
+
+#ifdef __DEBUG__
+  fprintf(stderr, "DEBUG/%s:%d generate main/declarations..\n", __FUNCTION__, __LINE__);
+#endif
 
   mpi_fprintf(stream, "\n\nint main(int argc, char *argv[])\n");
   mpi_fprintf(stream, "{\n");

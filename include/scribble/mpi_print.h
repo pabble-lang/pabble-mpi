@@ -33,6 +33,7 @@ void mpi_fprint_expr(FILE *stream, st_expr *expr);
 void mpi_fprint_rank(FILE *stream, st_expr *param, const char *replace, const char *with);
 void mpi_fprint_role(FILE *stream, st_role *role);
 void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent);
+st_node *next_interaction(st_node *node);
 
 void mpi_fprint_node(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent);
 void mpi_fprint_root(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent);
@@ -47,6 +48,9 @@ void mpi_fprint_allreduce(FILE *pre_stream, FILE *stream, FILE *post_stream, st_
 void mpi_fprint_allgather(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent);
 void mpi_fprint_scatter(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent);
 void mpi_fprint_gather(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent);
+
+void mpi_fprint_ifblk(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent);
+void mpi_fprint_oneof(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent);
 
 
 #ifdef __cplusplus

@@ -5,7 +5,7 @@
 ROOT := ..
 include $(ROOT)/Common.mk
 
-OBJS := $(BUILD_DIR)/print.o $(BUILD_DIR)/print_sendrecv.o $(BUILD_DIR)/print_common.o $(BUILD_DIR)/print_collective.o
+OBJS := $(BUILD_DIR)/print.o $(BUILD_DIR)/print_sendrecv.o $(BUILD_DIR)/print_common.o $(BUILD_DIR)/print_collective.o $(BUILD_DIR)/print_dynamic.o
 
 all: objs
 	$(CC) $(CFLAGS) pabble-mpi-tool.c \

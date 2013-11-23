@@ -17,16 +17,14 @@ void mpi_fprint_send(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree 
 {
   assert(node != NULL && node->type == ST_NODE_SEND);
 
-  mpi_fprintf(stream, "%*s", indent, SPACE);
 
   // If
   if (node->interaction->msg_cond != NULL) {
+    mpi_fprintf(stream, "%*s", indent, SPACE);
     mpi_fprint_msg_cond(stream, tree, node->interaction->msg_cond, indent);
+    mpi_fprintf(stream, "{\n");
+    indent++;
   }
-
-  mpi_fprintf(stream, "{\n");
-
-  indent++;
 
   // Variable declarations
   mpi_fprintf(pre_stream, "  int count%u = 1 /* CHANGE ME */;\n", mpi_primitive_count);
@@ -37,6 +35,7 @@ void mpi_fprint_send(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree 
       strlen(node->interaction->msgsig.payload) == 0 ? "unsigned char" : node->interaction->msgsig.payload,
       mpi_primitive_count);
 
+  mpi_fprintf(stream, "#pragma pabble compute%u (buf%u, count%u)\n", mpi_primitive_count, mpi_primitive_count, mpi_primitive_count);
   mpi_fprintf(stream, "%*sMPI_Send(buf%u, count%u, ", indent, SPACE, mpi_primitive_count, mpi_primitive_count);
   mpi_fprint_datatype(stream, node->interaction->msgsig);
   mpi_fprintf(stream, ", ");
@@ -145,8 +144,10 @@ void mpi_fprint_send(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree 
 
   mpi_fprintf(post_stream, "  free(buf%u);\n", mpi_primitive_count);
 
-  indent--;
-  mpi_fprintf(stream, "%*s}\n", indent, SPACE);
+  if (node->interaction->msg_cond != NULL) {
+    indent--;
+    mpi_fprintf(stream, "%*s}\n", indent, SPACE);
+  }
 
   mpi_primitive_count++;
 }
@@ -160,12 +161,12 @@ void mpi_fprint_recv(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree 
 
   // If
   if (node->interaction->msg_cond != NULL) {
+    mpi_fprintf(stream, "%*s", indent, SPACE);
     mpi_fprint_msg_cond(stream, tree, node->interaction->msg_cond, indent);
+    mpi_fprintf(stream, "{\n");
+    indent++;
   }
 
-  mpi_fprintf(stream, "{\n");
-
-    indent++;
 
     // Variable declarations
     mpi_fprintf(pre_stream, "  int count%u = 1 /* CHANGE ME */;\n", mpi_primitive_count);
@@ -282,11 +283,14 @@ void mpi_fprint_recv(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree 
     mpi_fprintf(stream, ", ");
     mpi_fprintf(stream, node->interaction->msgsig.op == NULL ? 0: node->interaction->msgsig.op); // This should be a constant
     mpi_fprintf(stream, ", MPI_COMM_WORLD, MPI_STATUS_IGNORE);\n"); // Ignore status (this is not non-blocking)
+    mpi_fprintf(stream, "#pragma pabble compute%u (buf%u, count%u)\n", mpi_primitive_count, mpi_primitive_count, mpi_primitive_count);
 
     mpi_fprintf(post_stream, "  free(buf%u);\n", mpi_primitive_count);
 
-  indent--;
-  mpi_fprintf(stream, "%*s}\n", indent, SPACE);
+  if (node->interaction->msg_cond != NULL) {
+    indent--;
+    mpi_fprintf(stream, "%*s}\n", indent, SPACE);
+  }
 
   mpi_primitive_count++;
 }

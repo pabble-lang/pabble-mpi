@@ -419,3 +419,19 @@ void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_t
 
   }
 }
+
+
+st_node *next_interaction(st_node *node)
+{
+  switch (node->type) {
+    case ST_NODE_ROOT:
+    case ST_NODE_RECUR:
+    case ST_NODE_FOR:
+    case ST_NODE_ONEOF:
+      if (node->nchild > 1) return next_interaction(node->children[0]);
+    case ST_NODE_SEND:
+    case ST_NODE_RECV:
+      return node;
+  }
+  return NULL;
+}

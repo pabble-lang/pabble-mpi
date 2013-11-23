@@ -29,6 +29,7 @@ void mpi_fprint_allgather(FILE *pre_stream, FILE *stream, FILE *post_stream, st_
       strlen(node->interaction->msgsig.payload) == 0 ? "unsigned char" : node->interaction->msgsig.payload,
       mpi_primitive_count);
 
+  mpi_fprintf(stream, "#pragma pabble compute%u (buf%u, count%u)\n", mpi_primitive_count, mpi_primitive_count, mpi_primitive_count);
   mpi_fprintf(stream, "%*sMPI_Allgather(sbuf%u, count%u, ", indent, SPACE, mpi_primitive_count, mpi_primitive_count);
   mpi_fprint_datatype(stream, node->interaction->msgsig);
   mpi_fprintf(stream, ", ");
@@ -41,6 +42,7 @@ void mpi_fprint_allgather(FILE *pre_stream, FILE *stream, FILE *post_stream, st_
   } else {
     mpi_fprintf(stream, "%s_comm);\n", node->interaction->from == NULL? node->interaction->to[0]->name : node->interaction->from->name);
   }
+  mpi_fprintf(stream, "#pragma pabble compute%u (buf%u, count%u)\n", mpi_primitive_count, mpi_primitive_count, mpi_primitive_count);
 
   mpi_fprintf(post_stream, "  free(sbuf%u);\n", mpi_primitive_count);
   mpi_fprintf(post_stream, "  free(rbuf%u);\n", mpi_primitive_count);
@@ -69,9 +71,11 @@ void mpi_fprint_allreduce(FILE *pre_stream, FILE *stream, FILE *post_stream, st_
       strlen(node->interaction->msgsig.payload) == 0 ? "unsigned char" : node->interaction->msgsig.payload,
       mpi_primitive_count);
 
+  mpi_fprintf(stream, "#pragma pabble compute%u (buf%u, count%u)\n", mpi_primitive_count, mpi_primitive_count, mpi_primitive_count);
   mpi_fprintf(stream, "%*sMPI_Reduce(sbuf%u, rbuf%u, count, ", indent, SPACE, mpi_primitive_count, mpi_primitive_count);
   mpi_fprint_datatype(stream, node->interaction->msgsig);
   mpi_fprintf(stream, ", %s, MPI_COMM_WORLD);\n", node->interaction->msgsig.op); // MPI_Op
+  mpi_fprintf(stream, "#pragma pabble compute%u (buf%u, count%u)\n", mpi_primitive_count, mpi_primitive_count, mpi_primitive_count);
 
   mpi_fprintf(post_stream, "  free(sbuf%u);\n", mpi_primitive_count);
   mpi_fprintf(post_stream, "  free(rbuf%u);\n", mpi_primitive_count);
@@ -99,6 +103,7 @@ void mpi_fprint_scatter(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tr
       strlen(node->interaction->msgsig.payload) == 0 ? "unsigned char" : node->interaction->msgsig.payload,
       mpi_primitive_count);
 
+  mpi_fprintf(stream, "#pragma pabble compute%u (buf%u, count%u)\n", mpi_primitive_count, mpi_primitive_count, mpi_primitive_count);
   mpi_fprintf(stream, "%*sMPI_Scatter(sbuf%u, count%u, ", indent, SPACE, mpi_primitive_count, mpi_primitive_count);
   mpi_fprint_datatype(stream, node->interaction->msgsig);
   mpi_fprintf(stream, ", ");
@@ -110,6 +115,7 @@ void mpi_fprint_scatter(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tr
     mpi_fprint_const_or_var(stream, tree, node->interaction->from->param[param]);
   }
   mpi_fprintf(stream, "), MPI_COMM_WORLD);\n");
+  mpi_fprintf(stream, "#pragma pabble compute%u (buf%u, count%u)\n", mpi_primitive_count, mpi_primitive_count, mpi_primitive_count);
 
   mpi_fprintf(post_stream, "  free(sbuf%u);\n", mpi_primitive_count);
   mpi_fprintf(post_stream, "  free(rbuf%u);\n", mpi_primitive_count);
@@ -137,6 +143,7 @@ void mpi_fprint_gather(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tre
       strlen(node->interaction->msgsig.payload) == 0 ? "unsigned char" : node->interaction->msgsig.payload,
       mpi_primitive_count);
 
+  mpi_fprintf(stream, "#pragma pabble compute%u (buf%u, count%u)\n", mpi_primitive_count, mpi_primitive_count, mpi_primitive_count);
   mpi_fprintf(stream, "%*s", indent, SPACE);
 
   if (strlen(node->interaction->msgsig.op)>0) {
@@ -156,6 +163,7 @@ void mpi_fprint_gather(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tre
     mpi_fprint_const_or_var(stream, tree, node->interaction->to[0]->param[param]);
   }
   mpi_fprintf(stream, "), MPI_COMM_WORLD);\n");
+  mpi_fprintf(stream, "#pragma pabble compute%u (buf%u, count%u)\n", mpi_primitive_count, mpi_primitive_count, mpi_primitive_count);
 
   mpi_fprintf(post_stream, "  free(sbuf%u);\n", mpi_primitive_count);
   mpi_fprintf(post_stream, "  free(rbuf%u);\n", mpi_primitive_count);
