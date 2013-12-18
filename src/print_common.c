@@ -9,6 +9,16 @@
 #include "scribble/mpi_print.h"
 
 
+int is_role_in_group(char *role_name, st_tree *tree)
+{
+  for (int g=0; g<tree->info->ngroup; g++) {
+    if (strcmp(tree->info->groups[g]->name, role_name) == 0)
+      return 1;
+  }
+  return 0;
+}
+
+
 /**
  * Print a constant or variable expression.
  */
@@ -335,6 +345,10 @@ void mpi_fprint_msg_cond(FILE *stream, st_tree *tree, const msg_cond_t *msg_cond
 
 void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent)
 {
+#ifdef __DEBUG__
+  fprintf(stderr, "INFO/%s:%d %s entry\n", __FILE__, __LINE__, __FUNCTION__);
+#endif
+
   int skip_node = 0;
   for (int child=0; child<node->nchild; child++) {
 
@@ -342,9 +356,12 @@ void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_t
     if (child+1 < node->nchild) {
       // Do Allgather check.
       if (node->children[child]->type == ST_NODE_SEND && node->children[child+1]->type == ST_NODE_RECV) {
-        if (   strcmp(node->children[child]->interaction->to[0]->name, ST_ROLE_ALL) == 0
-            && strcmp(node->children[child+1]->interaction->from->name, ST_ROLE_ALL) == 0) {
+        if ((strcmp(node->children[child]->interaction->to[0]->name, ST_ROLE_ALL) == 0 && strcmp(node->children[child+1]->interaction->from->name, ST_ROLE_ALL) == 0)
+           ||(is_role_in_group(node->children[child]->interaction->to[0]->name, tree) && is_role_in_group(node->children[child+1]->interaction->from->name, tree)))  {
 
+#ifdef __DEBUG__
+  fprintf(stderr, "INFO/%s:%d Allgather matched\n", __FILE__, __LINE__);
+#endif
           indent++;
           mpi_fprintf(stream, "%*s/* Allgather/Alltoall\n", indent, SPACE);
           scribble_fprint_send(stream, node->children[child], indent+1);
@@ -359,29 +376,55 @@ void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_t
       }
 
       // Do Group-to-group check.
-      if (!skip_node && node->children[child]->type == ST_NODE_RECV && node->children[child+1]->type == ST_NODE_SEND
-          && node->children[child]->interaction->msg_cond == NULL && node->children[child+1]->interaction->msg_cond == NULL) {
-        for (int group=0; group<tree->info->ngroup; group++) {
-          if (   strcmp(tree->info->groups[group]->name, node->children[child]->interaction->from->name) == 0
-              && strcmp(tree->info->groups[group]->name, node->children[child+1]->interaction->to[0]->name) == 0) {
-            indent++;
-            mpi_fprintf(stream, "%*s/* Group-to-group\n", indent, SPACE);
-            scribble_fprint_recv(stream, node->children[child], indent+1);
-            scribble_fprint_send(stream, node->children[child+1], indent+1);
-            mpi_fprintf(stream, "%*s*/\n", indent, SPACE);
-            mpi_fprint_allgather(pre_stream, stream, post_stream, tree, node->children[child], indent);
-            indent--;
-            skip_node = 1;
-            child += 1;
-          }
+      if (!skip_node
+          && node->children[child]->type   == ST_NODE_RECV && node->children[child]->interaction->msg_cond   == NULL
+          && node->children[child+1]->type == ST_NODE_SEND && node->children[child+1]->interaction->msg_cond == NULL) {
+        if (node->children[child]->interaction->from->dimen == 1 && node->children[child]->interaction->from->param[0]->type == ST_EXPR_TYPE_RNG && strcmp(node->children[child]->interaction->from->param[0]->rng->bindvar, "_") != 0
+            && node->children[child+1]->interaction->to[0]->dimen == 1 && node->children[child+1]->interaction->to[0]->param[0]->type == ST_EXPR_TYPE_RNG && strcmp(node->children[child+1]->interaction->to[0]->param[0]->rng->bindvar, "_") == 0) {
+
+#ifdef __DEBUG__
+  fprintf(stderr, "INFO/%s:%d Group-to-group (GROUP) matched\n", __FILE__, __LINE__);
+#endif
+          indent++;
+          mpi_fprintf(stream, "%*s/* Group-to-group (GROUP)\n", indent, SPACE);
+          scribble_fprint_recv(stream, node->children[child], indent+1);
+          scribble_fprint_send(stream, node->children[child+1], indent+1);
+          mpi_fprintf(stream, "%*s*/\n", indent, SPACE);
+          mpi_fprint_allgather(pre_stream, stream, post_stream, tree, node->children[child], indent);
+          indent--;
+
+          skip_node = 1;
+          child += 1;
+        }
+
+        if (is_role_in_group(node->children[child]->interaction->from->name, tree) && is_role_in_group(node->children[child+1]->interaction->to[0]->name, tree)) {
+
+#ifdef __DEBUG__
+  fprintf(stderr, "INFO/%s:%d Group-to-group matched\n", __FILE__, __LINE__);
+#endif
+          indent++;
+          mpi_fprintf(stream, "%*s/* Group-to-group\n", indent, SPACE);
+          scribble_fprint_recv(stream, node->children[child], indent+1);
+          scribble_fprint_send(stream, node->children[child+1], indent+1);
+          mpi_fprintf(stream, "%*s*/\n", indent, SPACE);
+          mpi_fprint_allgather(pre_stream, stream, post_stream, tree, node->children[child], indent);
+          indent--;
+
+          skip_node = 1;
+          child += 1;
         }
       }
 
       // Do Scatter check.
-      if (!skip_node && node->children[child]->type == ST_NODE_SEND && node->children[child+1]->type == ST_NODE_RECV
-          && node->children[child]->interaction->msg_cond != NULL && node->children[child+1]->interaction->msg_cond != NULL) {
-        if (   strcmp(node->children[child]->interaction->to[0]->name, ST_ROLE_ALL) == 0
-            && strcmp(node->children[child+1]->interaction->msg_cond->name, ST_ROLE_ALL) == 0) {
+      if (!skip_node
+          && node->children[child]->type   == ST_NODE_SEND && node->children[child]->interaction->msg_cond   != NULL
+          && node->children[child+1]->type == ST_NODE_RECV && node->children[child+1]->interaction->msg_cond != NULL) {
+        if ((strcmp(node->children[child]->interaction->to[0]->name, ST_ROLE_ALL) == 0 && strcmp(node->children[child+1]->interaction->msg_cond->name, ST_ROLE_ALL) == 0)
+           ||(is_role_in_group(node->children[child]->interaction->to[0]->name, tree) && is_role_in_group(node->children[child+1]->interaction->msg_cond->name, tree))) {
+
+#ifdef __DEBUG__
+  fprintf(stderr, "INFO/%s:%d Scatter matched\n", __FILE__, __LINE__);
+#endif
           indent++;
           mpi_fprintf(stream, "%*s/* Scatter\n", indent, SPACE);
           scribble_fprint_send(stream, node->children[child], indent+1);
@@ -389,16 +432,38 @@ void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_t
           mpi_fprintf(stream, "%*s*/\n", indent, SPACE);
           mpi_fprint_scatter(pre_stream, stream, post_stream, tree, node->children[child+1], indent); // root role is in receive line.
           indent--;
+
+          skip_node = 1;
+          child += 1;
+        } else if (   node->children[child]->interaction->to[0]->dimen == 1 && node->children[child]->interaction->to[0]->param[0]->type == ST_EXPR_TYPE_RNG && strcmp(node->children[child]->interaction->to[0]->param[0]->rng->bindvar, "_") == 0
+                   && node->children[child+1]->interaction->msg_cond->dimen == 1 && node->children[child+1]->interaction->msg_cond->param[0]->type == ST_EXPR_TYPE_RNG && strcmp(node->children[child+1]->interaction->msg_cond->param[0]->rng->bindvar, "_") == 0) {
+
+#ifdef __DEBUG__
+  fprintf(stderr, "INFO/%s:%d Scatter (GROUP) matched\n", __FILE__, __LINE__);
+#endif
+          indent++;
+          mpi_fprintf(stream, "%*s/* Scatter (GROUP)\n", indent, SPACE);
+          scribble_fprint_send(stream, node->children[child], indent+1);
+          scribble_fprint_recv(stream, node->children[child+1], indent+1);
+          mpi_fprintf(stream, "%*s*/\n", indent, SPACE);
+          mpi_fprint_scatter(pre_stream, stream, post_stream, tree, node->children[child+1], indent); // root role is in receive line.
+          indent--;
+
           skip_node = 1;
           child += 1;
         }
       }
 
       // Do Gather check.
-      if (!skip_node && node->children[child]->type == ST_NODE_RECV && node->children[child+1]->type == ST_NODE_SEND
-          && node->children[child]->interaction->msg_cond != NULL && node->children[child+1]->interaction->msg_cond != NULL) {
-        if (   strcmp(node->children[child]->interaction->from->name, ST_ROLE_ALL) == 0
-            && strcmp(node->children[child+1]->interaction->msg_cond->name, ST_ROLE_ALL) == 0) {
+      if (!skip_node
+          && node->children[child]->type   == ST_NODE_RECV && node->children[child]->interaction->msg_cond != NULL
+          && node->children[child+1]->type == ST_NODE_SEND && node->children[child+1]->interaction->msg_cond != NULL) {
+        if ((strcmp(node->children[child]->interaction->from->name, ST_ROLE_ALL) == 0 && strcmp(node->children[child+1]->interaction->msg_cond->name, ST_ROLE_ALL) == 0)
+            ||(is_role_in_group(node->children[child]->interaction->from->name, tree) && is_role_in_group(node->children[child+1]->interaction->msg_cond->name, tree))) {
+
+#ifdef __DEBUG__
+  fprintf(stderr, "INFO/%s:%d Gather matched\n", __FILE__, __LINE__);
+#endif
           indent++;
           mpi_fprintf(stream, "%*s/* Gather\n", indent, SPACE);
           scribble_fprint_recv(stream, node->children[child], indent+1);
@@ -406,6 +471,23 @@ void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_t
           mpi_fprintf(stream, "%*s*/\n", indent, SPACE);
           mpi_fprint_gather(pre_stream, stream, post_stream, tree, node->children[child+1], indent); // root role is in send line.
           indent--;
+
+          skip_node = 1;
+          child += 1;
+        } else if (   node->children[child]->interaction->from->dimen == 1 && node->children[child]->interaction->from->param[0]->type == ST_EXPR_TYPE_RNG && strcmp(node->children[child]->interaction->from->param[0]->rng->bindvar, "_") == 0
+                   && node->children[child+1]->interaction->msg_cond->dimen == 1 && node->children[child+1]->interaction->msg_cond->param[0]->type == ST_EXPR_TYPE_RNG && strcmp(node->children[child+1]->interaction->msg_cond->param[0]->rng->bindvar, "_") == 0) {
+
+#ifdef __DEBUG__
+  fprintf(stderr, "INFO/%s:%d Gather (GROUP) matched\n", __FILE__, __LINE__);
+#endif
+          indent++;
+          mpi_fprintf(stream, "%*s/* Gather (GROUP)\n", indent, SPACE);
+          scribble_fprint_recv(stream, node->children[child], indent+1);
+          scribble_fprint_send(stream, node->children[child+1], indent+1);
+          mpi_fprintf(stream, "%*s*/\n", indent, SPACE);
+          mpi_fprint_gather(pre_stream, stream, post_stream, tree, node->children[child+1], indent); // root role is in send line.
+          indent--;
+
           skip_node = 1;
           child += 1;
         }
@@ -414,12 +496,61 @@ void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_t
     }
 
     if (!skip_node) {
+#ifdef __DEBUG__
+  fprintf(stderr, "INFO/%s:%d No collective matched\n", __FILE__, __LINE__);
+#endif
       mpi_fprint_node(pre_stream, stream, post_stream, tree, node->children[child], indent+1);
     }
 
   }
 }
 
+
+void mpi_fprint_group_decl(FILE *stream, st_tree *tree, char *name, st_role **membs, unsigned int nmemb)
+{
+  mpi_fprintf(stream, "  MPI_Group %s;\n", name);
+  mpi_fprintf(stream, "  MPI_Comm %s_comm;\n", name);
+  // Define group members
+  mpi_fprintf(stream, "  int *grp_%s = NULL;\n");
+  mpi_fprintf(stream, "  int ngrp_%s = 0;\n", name);
+  for (int role=0; role<nmemb; role++) {
+    for (int param=0; param<membs[role]->dimen; param++) {
+      if (membs[role]->param[param]->type == ST_EXPR_TYPE_RNG) {
+        mpi_fprintf(stream, "  for (int param%d=",param);
+        mpi_fprint_const_or_var(stream, tree, membs[role]->param[param]->rng->from);
+        mpi_fprintf(stream, "; param%d<", param);
+        mpi_fprint_const_or_var(stream, tree, membs[role]->param[param]->rng->to);
+        mpi_fprintf(stream, "; param%d++) {\n", param);
+      } else if (membs[role]->param[param]->type == ST_EXPR_TYPE_VAR) {
+        mpi_fprintf(stream, "  int param%d = %s\n", param, membs[role]->param[param]->var); // Rank[var]
+      } else if (membs[role]->param[param]->type == ST_EXPR_TYPE_CONST) {
+        mpi_fprintf(stream, "  int param%d = %d\n", param, membs[role]->param[param]->num); // Rank[num]
+      }
+    }
+    // The group definition
+    mpi_fprintf(stream, "    grp_%s = realloc(grp_%s, sizeof(int)*(ngrp_%s+1));\n",
+        name, name, name);
+    mpi_fprintf(stream, "    grp_%s[ngrp_%s] = %s_RANK(",
+        name, name, name);
+    for (int param=0; param<membs[role]->dimen; param++) {
+      if (param!=0) mpi_fprintf(stream, ",");
+      mpi_fprintf(stream, "param%d", param);
+    }
+    mpi_fprintf(stream, "); ngrp_%s++;\n", name);
+
+    for (int param=0; param<membs[role]->dimen; param++) {
+      if (membs[role]->param[param]->type == ST_EXPR_TYPE_RNG) {
+        mpi_fprintf(stream, " }\n", param);
+      }
+    }
+
+  }
+  mpi_fprintf(stream, "  };\n");
+  mpi_fprintf(stream, "  MPI_Group_incl(world_grp, %d, &%s);\n",
+      nmemb, name);
+  mpi_fprintf(stream, "  MPI_Comm_create(MPI_COMM_WORLD, %s, %s_comm);\n",
+      name, name);
+}
 
 st_node *next_interaction(st_node *node)
 {

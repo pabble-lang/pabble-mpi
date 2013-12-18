@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include <sesstype/st_node.h>
+#include <sesstype/st_node_print.h>
 #include <scribble/print.h>
 
 #include "scribble/mpi_print.h"
@@ -14,6 +15,13 @@ extern unsigned int mpi_primitive_count;
 
 void mpi_fprint_allgather(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent)
 {
+#ifdef __DEBUG__
+  fprintf(stderr, "INFO/%s:%d %s entry\nINFO/", __FILE__, __LINE__, __FUNCTION__);
+  st_node_fprint(stderr, node, indent);
+#endif
+
+  assert(node != NULL);
+
   // Variable declarations
   mpi_fprintf(pre_stream, "  int count%u = 1 /* CHANGE ME */;\n", mpi_primitive_count);
 
@@ -53,8 +61,12 @@ void mpi_fprint_allgather(FILE *pre_stream, FILE *stream, FILE *post_stream, st_
 
 void mpi_fprint_allreduce(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent)
 {
-  assert(node != NULL && node->type == ST_NODE_ALLREDUCE);
+#ifdef __DEBUG__
+  fprintf(stderr, "INFO/%s:%d %s entry\nINFO/", __FILE__, __LINE__, __FUNCTION__);
+  st_node_fprint(stderr, node, indent);
+#endif
 
+  assert(node != NULL && node->type == ST_NODE_ALLREDUCE);
 
   // Variable declarations
   mpi_fprintf(pre_stream, "  int count%u = 1 /* CHANGE ME */;\n", mpi_primitive_count);
@@ -85,8 +97,12 @@ void mpi_fprint_allreduce(FILE *pre_stream, FILE *stream, FILE *post_stream, st_
 
 void mpi_fprint_scatter(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent)
 {
-  assert(node != NULL && node->type == ST_NODE_RECV);
+#ifdef __DEBUG__
+  fprintf(stderr, "INFO/%s:%d %s entry\nINFO/", __FILE__, __LINE__, __FUNCTION__);
+  st_node_fprint(stderr, node, indent);
+#endif
 
+  assert(node != NULL && node->type == ST_NODE_RECV);
 
   // Variable declarations
   mpi_fprintf(pre_stream, "  int count%u = 1 /* CHANGE ME */;\n", mpi_primitive_count);
@@ -114,7 +130,15 @@ void mpi_fprint_scatter(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tr
     if (param!=0) mpi_fprintf(stream, ",");
     mpi_fprint_const_or_var(stream, tree, node->interaction->from->param[param]);
   }
-  mpi_fprintf(stream, "), MPI_COMM_WORLD);\n");
+  if (is_role_in_group(node->interaction->msg_cond->name, tree)) {
+    mpi_fprintf(stream, "), %s_comm);\n", node->interaction->msg_cond->name);
+  } else if (strcmp(node->interaction->msg_cond->name, ST_ROLE_ALL) == 0) {
+    mpi_fprintf(stream, "), MPI_COMM_WORLD);\n");
+  } else {
+    fprintf(stderr, "ERROR/%s:%d %s Cannot determine communicator (inline group?), defaulting to MPI_COMM_WORLD\n", __FILE__, __LINE__, __FUNCTION__);
+    // TODO Inline group not given name
+    mpi_fprintf(stream, "), MPI_COMM_WORLD);\n");
+  }
   mpi_fprintf(stream, "#pragma pabble compute%u (buf%u, count%u)\n", mpi_primitive_count, mpi_primitive_count, mpi_primitive_count);
 
   mpi_fprintf(post_stream, "  free(sbuf%u);\n", mpi_primitive_count);
@@ -125,8 +149,12 @@ void mpi_fprint_scatter(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tr
 
 void mpi_fprint_gather(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent)
 {
-  assert(node != NULL && node->type == ST_NODE_SEND);
+#ifdef __DEBUG__
+  fprintf(stderr, "INFO/%s:%d %s entry\nINFO/", __FILE__, __LINE__, __FUNCTION__);
+  st_node_fprint(stderr, node, indent);
+#endif
 
+  assert(node != NULL && node->type == ST_NODE_SEND);
 
   // Variable declarations
   mpi_fprintf(pre_stream, "  int count%u = 1 /* CHANGE ME */;\n", mpi_primitive_count);
@@ -162,7 +190,15 @@ void mpi_fprint_gather(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tre
     if (param!=0) mpi_fprintf(stream, ",");
     mpi_fprint_const_or_var(stream, tree, node->interaction->to[0]->param[param]);
   }
-  mpi_fprintf(stream, "), MPI_COMM_WORLD);\n");
+  if (is_role_in_group(node->interaction->msg_cond->name, tree)) {
+    mpi_fprintf(stream, "), %s_comm);\n", node->interaction->msg_cond->name);
+  } else if (strcmp(node->interaction->msg_cond->name, ST_ROLE_ALL) == 0) {
+    mpi_fprintf(stream, "), MPI_COMM_WORLD);\n");
+  } else {
+    fprintf(stderr, "ERROR/%s:%d %s Cannot determine communicator (inline group?), defaulting to MPI_COMM_WORLD\n", __FILE__, __LINE__, __FUNCTION__);
+    // TODO Inline group not given name
+    mpi_fprintf(stream, "), MPI_COMM_WORLD);\n");
+  }
   mpi_fprintf(stream, "#pragma pabble compute%u (buf%u, count%u)\n", mpi_primitive_count, mpi_primitive_count, mpi_primitive_count);
 
   mpi_fprintf(post_stream, "  free(sbuf%u);\n", mpi_primitive_count);

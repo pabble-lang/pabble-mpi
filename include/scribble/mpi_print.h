@@ -25,6 +25,8 @@ void mpi_print(FILE *stream, st_tree *local_tree);
 void mpi_fprintf(FILE *stream, const char *format, ...);
 
 // Helpers
+//
+int is_role_in_group(char *role_name, st_tree *tree);
 
 void mpi_fprint_const_or_var(FILE *stream, st_tree *tree, st_expr *expr);
 void mpi_fprint_msg_cond(FILE *stream, st_tree *tree, const msg_cond_t *msg_cond, int indent);

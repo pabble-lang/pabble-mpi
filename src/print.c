@@ -6,6 +6,9 @@
 #include <unistd.h>
 
 #include <sesstype/st_node.h>
+#ifdef __DEBUG__
+#include <sesstype/st_node_print.h>
+#endif
 #include <scribble/print.h>
 
 #include "scribble/mpi_print.h"
@@ -42,8 +45,6 @@ void mpi_find_labels(st_node *node)
     mpi_find_labels(node->children[child]);
   }
 }
-
-
 
 
 void mpi_fprint_choice(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent)
@@ -125,6 +126,10 @@ void mpi_fprint_choice(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tre
 void mpi_fprint_node(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent)
 {
   assert(node != NULL);
+#ifdef __DEBUG__
+  st_node_fprint(stderr, node, 0);
+  fprintf(stderr, "\n");
+#endif
 
   switch (node->type) {
     case ST_NODE_ROOT:      mpi_fprint_root(pre_stream, stream, post_stream, tree, node, indent);      break;

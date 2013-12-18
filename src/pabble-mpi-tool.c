@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <sesstype/st_node.h>
+#include <sesstype/st_node_print.h>
 #include <sesstype/st_normalise.h>
 
 #include <scribble/parser.h>
