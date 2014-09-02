@@ -1,3 +1,9 @@
+pabble-mpi (1.2.1) unstable; urgency=low
+
+  * Fix wrong Makefile
+
+ -- Nicholas Ng <nickng@doc.ic.ac.uk>  Tue, 2 Sep 2014 23:44:30 +0000
+
 pabble-mpi (1.2.0) unstable; urgency=low
 
   * Bump dependency to libsesstype 1.5.0 and libscribble 1.4.0

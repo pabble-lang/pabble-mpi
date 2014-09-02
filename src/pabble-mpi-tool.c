@@ -16,7 +16,7 @@
 #include "scribble/mpi_print.h"
 #include "scribble/pabble_mpi_utils.h"
 
-#define PABBLE_MPI_TOOL_VERSION "1.2.0"
+#define PABBLE_MPI_TOOL_VERSION "1.2.1"
 
 extern int yyparse(st_tree *tree);
 extern FILE *yyin;
