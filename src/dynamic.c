@@ -18,7 +18,7 @@ void mpi_fprint_ifblk(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree
 
   // If
   mpi_fprintf(stream, "%*s", indent, SPACE);
-  mpi_fprint_msg_cond(stream, tree, node->ifblk->cond, indent);
+  mpi_fprint_msg_cond(pre_stream, stream, post_stream, tree, node->ifblk->cond, indent);
   mpi_fprintf(stream, "{ // IF-BLK\n");
 
   indent++;
@@ -33,6 +33,7 @@ void mpi_fprint_ifblk(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree
 }
 
 
+#ifdef PABBLE_DYNAMIC
 void mpi_fprint_oneof(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent)
 {
   assert(node != NULL && node->type == ST_NODE_ONEOF);
@@ -47,18 +48,23 @@ void mpi_fprint_oneof(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree
   }
 
   // Variable declarations
-  mpi_fprintf(pre_stream, "  int count%u = 1 /* CHANGE ME */;\n", mpi_primitive_count);
-
   st_node *first_interaction = next_interaction(node);
+  mpi_fprintf(pre_stream, "  int count%u = ", mpi_primitive_count);
+  if (node->interaction->msgsig.npayload > 0 && node->interaction->msgsig.payloads[0].expr != NULL) {
+    st_expr_fprint(pre_stream, node->interaction->msgsig.payloads[0].expr);
+  } else {
+    mpi_fprintf(pre_stream, "1");
+  }
+  mpi_fprintf(pre_stream, ";\n");
 
   mpi_fprintf(pre_stream, "  %s *buf%u = malloc(sizeof(%s) * count%u);\n",
-      strlen(first_interaction->interaction->msgsig.payload) == 0 ? "unsigned char" : first_interaction->interaction->msgsig.payload,
+      node->interaction->msgsig.npayload < 1 ? "unsigned char" : node->interaction->msgsig.payloads[0].type,
       mpi_primitive_count,
-      strlen(first_interaction->interaction->msgsig.payload) == 0 ? "unsigned char" : first_interaction->interaction->msgsig.payload,
+      node->interaction->msgsig.npayload < 1 ? "unsigned char" : node->interaction->msgsig.payloads[0].type,
       mpi_primitive_count);
 
   mpi_fprintf(stream, "%*sMPI_Recv(buf%u, count%u, ", indent, SPACE, mpi_primitive_count, mpi_primitive_count);
-  mpi_fprint_datatype(stream, node->interaction->msgsig);
+  mpi_fprint_datatype(pre_stream, stream, post_stream, node->interaction->msgsig);
   mpi_fprintf(stream, ", MPI_ANY_RANK, ");
   mpi_fprintf(stream, first_interaction->interaction->msgsig.op == NULL ? 0: first_interaction->interaction->msgsig.op); // This should be a constant
   mpi_fprintf(stream, ", MPI_COMM_WORLD, MPI_STATUS_IGNORE);\n"); // Ignore status (this is not non-blocking)
@@ -74,3 +80,4 @@ void mpi_fprint_oneof(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree
     mpi_fprintf(stream, "%*s}\n", indent, SPACE);
   }
 }
+#endif

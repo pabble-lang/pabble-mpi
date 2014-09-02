@@ -10,6 +10,9 @@ all: tool
 tool:
 	$(MAKE) --dir=src
 
+updateversion:
+	utils/update-ver.sh
+
 install: tool
 	$(MKDIR) $(DESTDIR)/usr/include/scribble
 	$(MKDIR) $(DESTDIR)/usr/bin

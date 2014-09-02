@@ -4,9 +4,13 @@
 #include <stdio.h>
 #include <sesstype/st_node.h>
 
-#define RANK_VARIABLE "rank"
-#define SIZE_VARIABLE "size"
-#define SPACE         "  "
+#define META_VARIABLE "meta"
+#define RANK_VARIABLE META_VARIABLE".pid"
+#define SIZE_VARIABLE META_VARIABLE".nprocs"
+#define COMM_VARIABLE META_VARIABLE".comm"
+#define DATASIZE_FUNC META_VARIABLE".buflen"
+#define SPACE "  "
+#define ST_ROLE_ALL "__All"
 
 
 typedef struct {
@@ -29,8 +33,9 @@ void mpi_fprintf(FILE *stream, const char *format, ...);
 int is_role_in_group(char *role_name, st_tree *tree);
 
 void mpi_fprint_const_or_var(FILE *stream, st_tree *tree, st_expr *expr);
-void mpi_fprint_msg_cond(FILE *stream, st_tree *tree, const msg_cond_t *msg_cond, int indent);
-void mpi_fprint_datatype(FILE *stream, st_node_msgsig_t msgsig);
+void mpi_fprint_msg_cond(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, const msg_cond_t *msg_cond, int indent);
+void mpi_fprint_datatype_def(FILE *pre_stream, FILE *stream, FILE *post_stream, st_node_msgsig_t msgsig);
+void mpi_fprint_datatype(FILE *pre_stream, FILE *stream, FILE *post_stream, st_node_msgsig_t msgsig);
 void mpi_fprint_expr(FILE *stream, st_expr *expr);
 void mpi_fprint_rank(FILE *stream, st_expr *param, const char *replace, const char *with);
 void mpi_fprint_role(FILE *stream, st_role *role);
@@ -54,6 +59,10 @@ void mpi_fprint_gather(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tre
 void mpi_fprint_ifblk(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent);
 void mpi_fprint_oneof(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent);
 
+char *payload_type(st_node *node);
+char *payload_size(st_node *node);
+char *sendbuf_name(st_node *node, unsigned int idx);
+char *recvbuf_name(st_node *node, unsigned int idx);
 
 #ifdef __cplusplus
 }

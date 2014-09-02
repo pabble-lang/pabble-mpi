@@ -5,6 +5,7 @@
 
 #include <sesstype/st_node.h>
 #include <scribble/print.h>
+#include <scribble/print_utils.h>
 
 #include "scribble/mpi_print.h"
 
@@ -42,7 +43,9 @@ void mpi_fprint_const_or_var(FILE *stream, st_tree *tree, st_expr *expr)
       break;
 
     default:
-      fprintf(stderr, "%s:%s:%d Expression is neither CONST or VAR (%d)\n", __FUNCTION__, __FILE__, __LINE__, expr->type);
+      fprintf_error(stderr, "%s:%s:%d Expression is neither CONST or VAR (%d): ", __FUNCTION__, __FILE__, __LINE__, expr->type);
+      st_expr_fprint(stderr, expr);
+      fprintf(stderr, "\n");
       assert(0/*Expression is neither CONST or VAR*/);
       break;
   }
@@ -122,19 +125,47 @@ void mpi_fprint_expr(FILE *stream, st_expr *expr)
   };
 }
 
-
-void mpi_fprint_datatype(FILE *stream, st_node_msgsig_t msgsig)
+void mpi_fprint_datatype_def(FILE *pre_stream, FILE *stream, FILE *post_stream, st_node_msgsig_t msgsig)
 {
-  if (strcmp(msgsig.payload, "int") == 0) {
+  static string_list custom_datatypes = { .strings=NULL, .count=0 };
+  if (strcmp(msgsig.payloads[0].type, "int") == 0
+      || strcmp(msgsig.payloads[0].type, "float") == 0
+      || strcmp(msgsig.payloads[0].type, "double") == 0
+      || strcmp(msgsig.payloads[0].type, "char") == 0) {
+    // Not custom datatype, nothing to do
+  } else {
+    // Custom datatypes
+    int found = 0;
+    for (int i=0; i<custom_datatypes.count; i++) {
+      if (strcmp(custom_datatypes.strings[i], msgsig.payloads[0].type) == 0) {
+        found = 1;
+      }
+    }
+    if (!found) {
+      custom_datatypes.strings = (char **)realloc(custom_datatypes.strings, (custom_datatypes.count+1)*sizeof(char *));
+      custom_datatypes.strings[custom_datatypes.count++] = strdup(msgsig.payloads[0].type);
+      mpi_fprintf(pre_stream, "#pragma pabble type %s\n", msgsig.payloads[0].type);
+      mpi_fprintf(pre_stream, "  typedef void %s;\n", msgsig.payloads[0].type);
+      mpi_fprintf(pre_stream, "  MPI_Datatype MPI_%s = MPI_BYTE;\n", msgsig.payloads[0].type);
+    }
+  }
+
+}
+
+
+void mpi_fprint_datatype(FILE *pre_stream, FILE *stream, FILE *post_stream, st_node_msgsig_t msgsig)
+{
+  assert(msgsig.npayload > 0);
+  if (strcmp(msgsig.payloads[0].type, "int") == 0) {
     mpi_fprintf(stream, "MPI_INT");
-  } else if (strcmp(msgsig.payload, "float") == 0) {
+  } else if (strcmp(msgsig.payloads[0].type, "float") == 0) {
     mpi_fprintf(stream, "MPI_FLOAT");
-  } else if (strcmp(msgsig.payload, "double") == 0) {
+  } else if (strcmp(msgsig.payloads[0].type, "double") == 0) {
     mpi_fprintf(stream, "MPI_DOUBLE");
-  } else if (strcmp(msgsig.payload, "char") == 0) {
+  } else if (strcmp(msgsig.payloads[0].type, "char") == 0) {
     mpi_fprintf(stream, "MPI_CHAR");
   } else {
-    mpi_fprintf(stream, "MPI_BYTE/*undefined type*/");
+    mpi_fprintf(stream, "MPI_%s", msgsig.payloads[0].type);
   }
 }
 
@@ -216,7 +247,7 @@ void mpi_fprint_rank(FILE *stream, st_expr *param, const char *replace, const ch
 }
 
 
-void mpi_fprint_msg_cond(FILE *stream, st_tree *tree, const msg_cond_t *msg_cond, int indent)
+void mpi_fprint_msg_cond(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, const msg_cond_t *msg_cond, int indent)
 {
   static int condition_count = 0;
   assert(msg_cond != NULL);
@@ -234,7 +265,7 @@ void mpi_fprint_msg_cond(FILE *stream, st_tree *tree, const msg_cond_t *msg_cond
   // No dimension, ie. non-parameterised role.
   if (msg_cond->dimen == 0 && in_group == -1) {
     // if ( rank == Worker_RANK )
-    mpi_fprintf(stream, "if ( %s == %s_RANK ) ", RANK_VARIABLE, msg_cond->name);
+    mpi_fprintf(stream, "%*sif ( %s == %s_RANK ) ", indent, SPACE, RANK_VARIABLE, msg_cond->name);
   }
 
   // 1D parameterised role.
@@ -250,14 +281,14 @@ void mpi_fprint_msg_cond(FILE *stream, st_tree *tree, const msg_cond_t *msg_cond
       case ST_EXPR_TYPE_SHL:
       case ST_EXPR_TYPE_SHR:
         // if ( rank == Worker_RANK(N-1) )
-        mpi_fprintf(stream, "if ( %s == %s_RANK(", RANK_VARIABLE, msg_cond->name);
+        mpi_fprintf(stream, "%*sif ( %s == %s_RANK(", indent, SPACE, RANK_VARIABLE, msg_cond->name);
         mpi_fprint_expr(stream, msg_cond->param[0]);
         mpi_fprintf(stream, ") ) ");
         break;
 
       case ST_EXPR_TYPE_RNG:
         // if ( Worker_RANK(1) <= rank && rank <= Worker_RANK(N) )
-        mpi_fprintf(stream, "if ( %s_RANK(", msg_cond->name);
+        mpi_fprintf(stream, "%*sif ( %s_RANK(", indent, SPACE, msg_cond->name);
         mpi_fprint_expr(stream, msg_cond->param[0]->rng->from);
         mpi_fprintf(stream, ") <= %s && %s <= %s_RANK(", RANK_VARIABLE, RANK_VARIABLE, msg_cond->name);
         mpi_fprint_expr(stream, msg_cond->param[0]->rng->to);
@@ -270,7 +301,7 @@ void mpi_fprint_msg_cond(FILE *stream, st_tree *tree, const msg_cond_t *msg_cond
   }
 
   if (msg_cond->dimen >= 2 || in_group != -1) {
-    mpi_fprintf(stream, "int cond%d = 0;\n", condition_count);
+    mpi_fprintf(pre_stream, "  int cond%d = 0;\n", condition_count);
 
     while (1) {
       if (in_group != -1) {
@@ -285,45 +316,45 @@ void mpi_fprint_msg_cond(FILE *stream, st_tree *tree, const msg_cond_t *msg_cond
         if (msg_cond->param[param]->type == ST_EXPR_TYPE_RNG) {
           // 1..N
           indent += param;
-          mpi_fprintf(stream, "%*sfor (int %c=", indent, SPACE, 'x'+param);
-          mpi_fprint_expr(stream, msg_cond->param[param]->rng->from);
-          mpi_fprintf(stream, "; %c<=", 'x'+param);
-          mpi_fprint_expr(stream, msg_cond->param[param]->rng->to);
-          mpi_fprintf(stream, "; %c++)\n", 'x'+param);
+          mpi_fprintf(pre_stream, "  for (int %c=", 'x'+param);
+          mpi_fprint_expr(pre_stream, msg_cond->param[param]->rng->from);
+          mpi_fprintf(pre_stream, "; %c<=", 'x'+param);
+          mpi_fprint_expr(pre_stream, msg_cond->param[param]->rng->to);
+          mpi_fprintf(pre_stream, "; %c++)\n", 'x'+param);
           indent -= param;
         } else {
           // 1 -> 1..1
           indent += param;
-          mpi_fprintf(stream, "%*sfor (int %c=", indent, SPACE, 'x'+param);
-          mpi_fprint_const_or_var(stream, tree, msg_cond->param[param]);
-          mpi_fprintf(stream, "; %c<=", 'x'+param);
-          mpi_fprint_const_or_var(stream, tree, msg_cond->param[param]);
-          mpi_fprintf(stream, "; %c++)\n", 'x'+param);
+          mpi_fprintf(pre_stream, "  for (int %c=", 'x'+param);
+          mpi_fprint_const_or_var(pre_stream, tree, msg_cond->param[param]);
+          mpi_fprintf(pre_stream, "; %c<=", 'x'+param);
+          mpi_fprint_const_or_var(pre_stream, tree, msg_cond->param[param]);
+          mpi_fprintf(pre_stream, "; %c++)\n", 'x'+param);
           indent -= param;
         }
       }
       if (msg_cond->param[msg_cond->dimen-1]->type == ST_EXPR_TYPE_RNG) {
         indent += (msg_cond->dimen - 1);
         // cond0 |= ( Worker_RANK(x,y,1) <= rank && rank <= Worker_RANK(x,y,N) );
-        mpi_fprintf(stream, "%*scond%d |= ( %s_RANK(", indent, SPACE, condition_count, msg_cond->name);
-        for (int param=0; param<msg_cond->dimen-1; param++) mpi_fprintf(stream, "%c,", 'x'+param);
-        mpi_fprint_const_or_var(stream, tree, msg_cond->param[msg_cond->dimen-1]->rng->from);
-        mpi_fprintf(stream, ") <= %s && %s <= %s_RANK(", RANK_VARIABLE, RANK_VARIABLE, msg_cond->name);
-        for (int param=0; param<msg_cond->dimen-1; param++) mpi_fprintf(stream, "%c,", 'x'+param);
+        mpi_fprintf(pre_stream, "%*scond%d |= ( %s_RANK(", indent, SPACE, condition_count, msg_cond->name);
+        for (int param=0; param<msg_cond->dimen-1; param++) mpi_fprintf(pre_stream, "%c,", 'x'+param);
+        mpi_fprint_const_or_var(pre_stream, tree, msg_cond->param[msg_cond->dimen-1]->rng->from);
+        mpi_fprintf(pre_stream, ") <= %s && %s <= %s_RANK(", RANK_VARIABLE, RANK_VARIABLE, msg_cond->name);
+        for (int param=0; param<msg_cond->dimen-1; param++) mpi_fprintf(pre_stream, "%c,", 'x'+param);
         if (msg_cond->param[msg_cond->dimen-1]->rng->to->type > 2) {
-          mpi_fprint_expr(stream, msg_cond->param[msg_cond->dimen-1]->rng->to);
+          mpi_fprint_expr(pre_stream, msg_cond->param[msg_cond->dimen-1]->rng->to);
         } else {
-          mpi_fprint_const_or_var(stream, tree, msg_cond->param[msg_cond->dimen-1]->rng->to);
+          mpi_fprint_const_or_var(pre_stream, tree, msg_cond->param[msg_cond->dimen-1]->rng->to);
         }
-        mpi_fprintf(stream, ") );\n");
+        mpi_fprintf(pre_stream, ") );\n");
         indent -= (msg_cond->dimen - 1);
       } else {
         indent += (msg_cond->dimen - 1);
         // cond0 |= ( rank == Worker_RANK(x,y,1) );
-        mpi_fprintf(stream, "%*scond%d |= ( %s == %s_RANK(", indent, SPACE, condition_count, RANK_VARIABLE,  msg_cond->name);
-        for (int param=0; param<msg_cond->dimen-1; param++) mpi_fprintf(stream, "%c,", 'x'+param);
-        mpi_fprint_const_or_var(stream, tree, msg_cond->param[msg_cond->dimen-1]);
-        mpi_fprintf(stream, ") );\n", condition_count, RANK_VARIABLE,  msg_cond->name);
+        mpi_fprintf(pre_stream, "%*scond%d |= ( %s == %s_RANK(", indent, SPACE, condition_count, RANK_VARIABLE,  msg_cond->name);
+        for (int param=0; param<msg_cond->dimen-1; param++) mpi_fprintf(pre_stream, "%c,", 'x'+param);
+        mpi_fprint_const_or_var(pre_stream, tree, msg_cond->param[msg_cond->dimen-1]);
+        mpi_fprintf(pre_stream, ") );\n", condition_count, RANK_VARIABLE,  msg_cond->name);
         indent -= (msg_cond->dimen - 1);
       }
 
@@ -346,7 +377,7 @@ void mpi_fprint_msg_cond(FILE *stream, st_tree *tree, const msg_cond_t *msg_cond
 void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_tree *tree, st_node *node, int indent)
 {
 #ifdef __DEBUG__
-  fprintf(stderr, "INFO/%s:%d %s entry\n", __FILE__, __LINE__, __FUNCTION__);
+  fprintf_info(stderr, "%s:%d %s entry\n", __FILE__, __LINE__, __FUNCTION__);
 #endif
 
   int skip_node = 0;
@@ -360,7 +391,7 @@ void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_t
            ||(is_role_in_group(node->children[child]->interaction->to[0]->name, tree) && is_role_in_group(node->children[child+1]->interaction->from->name, tree)))  {
 
 #ifdef __DEBUG__
-  fprintf(stderr, "INFO/%s:%d Allgather matched\n", __FILE__, __LINE__);
+  fprintf_info(stderr, "%s:%d Allgather matched\n", __FILE__, __LINE__);
 #endif
           indent++;
           mpi_fprintf(stream, "%*s/* Allgather/Alltoall\n", indent, SPACE);
@@ -383,7 +414,7 @@ void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_t
             && node->children[child+1]->interaction->to[0]->dimen == 1 && node->children[child+1]->interaction->to[0]->param[0]->type == ST_EXPR_TYPE_RNG && strcmp(node->children[child+1]->interaction->to[0]->param[0]->rng->bindvar, "_") == 0) {
 
 #ifdef __DEBUG__
-  fprintf(stderr, "INFO/%s:%d Group-to-group (GROUP) matched\n", __FILE__, __LINE__);
+  fprintf_info(stderr, "%s:%d Group-to-group (GROUP) matched\n", __FILE__, __LINE__);
 #endif
           indent++;
           mpi_fprintf(stream, "%*s/* Group-to-group (GROUP)\n", indent, SPACE);
@@ -400,7 +431,7 @@ void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_t
         if (is_role_in_group(node->children[child]->interaction->from->name, tree) && is_role_in_group(node->children[child+1]->interaction->to[0]->name, tree)) {
 
 #ifdef __DEBUG__
-  fprintf(stderr, "INFO/%s:%d Group-to-group matched\n", __FILE__, __LINE__);
+  fprintf_info(stderr, "%s:%d Group-to-group matched\n", __FILE__, __LINE__);
 #endif
           indent++;
           mpi_fprintf(stream, "%*s/* Group-to-group\n", indent, SPACE);
@@ -423,7 +454,7 @@ void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_t
            ||(is_role_in_group(node->children[child]->interaction->to[0]->name, tree) && is_role_in_group(node->children[child+1]->interaction->msg_cond->name, tree))) {
 
 #ifdef __DEBUG__
-  fprintf(stderr, "INFO/%s:%d Scatter matched\n", __FILE__, __LINE__);
+  fprintf_info(stderr, "%s:%d Scatter matched\n", __FILE__, __LINE__);
 #endif
           indent++;
           mpi_fprintf(stream, "%*s/* Scatter\n", indent, SPACE);
@@ -439,7 +470,7 @@ void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_t
                    && node->children[child+1]->interaction->msg_cond->dimen == 1 && node->children[child+1]->interaction->msg_cond->param[0]->type == ST_EXPR_TYPE_RNG && strcmp(node->children[child+1]->interaction->msg_cond->param[0]->rng->bindvar, "_") == 0) {
 
 #ifdef __DEBUG__
-  fprintf(stderr, "INFO/%s:%d Scatter (GROUP) matched\n", __FILE__, __LINE__);
+  fprintf_info(stderr, "%s:%d Scatter (GROUP) matched\n", __FILE__, __LINE__);
 #endif
           indent++;
           mpi_fprintf(stream, "%*s/* Scatter (GROUP)\n", indent, SPACE);
@@ -462,7 +493,7 @@ void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_t
             ||(is_role_in_group(node->children[child]->interaction->from->name, tree) && is_role_in_group(node->children[child+1]->interaction->msg_cond->name, tree))) {
 
 #ifdef __DEBUG__
-  fprintf(stderr, "INFO/%s:%d Gather matched\n", __FILE__, __LINE__);
+  fprintf_info(stderr, "%s:%d Gather matched\n", __FILE__, __LINE__);
 #endif
           indent++;
           mpi_fprintf(stream, "%*s/* Gather\n", indent, SPACE);
@@ -478,7 +509,7 @@ void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_t
                    && node->children[child+1]->interaction->msg_cond->dimen == 1 && node->children[child+1]->interaction->msg_cond->param[0]->type == ST_EXPR_TYPE_RNG && strcmp(node->children[child+1]->interaction->msg_cond->param[0]->rng->bindvar, "_") == 0) {
 
 #ifdef __DEBUG__
-  fprintf(stderr, "INFO/%s:%d Gather (GROUP) matched\n", __FILE__, __LINE__);
+  fprintf_info(stderr, "%s:%d Gather (GROUP) matched\n", __FILE__, __LINE__);
 #endif
           indent++;
           mpi_fprintf(stream, "%*s/* Gather (GROUP)\n", indent, SPACE);
@@ -497,7 +528,7 @@ void mpi_fprint_children(FILE *pre_stream, FILE *stream, FILE *post_stream, st_t
 
     if (!skip_node) {
 #ifdef __DEBUG__
-  fprintf(stderr, "INFO/%s:%d No collective matched\n", __FILE__, __LINE__);
+  fprintf_info(stderr, "%s:%d No collective matched\n", __FILE__, __LINE__);
 #endif
       mpi_fprint_node(pre_stream, stream, post_stream, tree, node->children[child], indent+1);
     }
@@ -552,14 +583,48 @@ void mpi_fprint_group_decl(FILE *stream, st_tree *tree, char *name, st_role **me
       name, name);
 }
 
+char *payload_type(st_node *node)
+{
+  if (node->interaction->msgsig.npayload == 0)
+    return "void";
+  return node->interaction->msgsig.payloads[0].type;
+}
+
+char *payload_size(st_node *node)
+{
+  int _size = strlen(DATASIZE_FUNC)+strlen("()")+strlen(node->interaction->msgsig.op)+1;
+  char *size = (char *)calloc(_size, sizeof(char));
+  sprintf(size, "%s(%s)", DATASIZE_FUNC, node->interaction->msgsig.op);
+  return size;
+}
+
+char *sendbuf_name(st_node *node, unsigned int idx)
+{
+  int _size = strlen(node->interaction->msgsig.op)+strlen("buf")+strlen("_s")+1;
+  char *size = (char *)calloc(_size, sizeof(char));
+  sprintf(size, "buf%s%u_s", node->interaction->msgsig.op, idx);
+  return size;
+}
+
+char *recvbuf_name(st_node *node, unsigned int idx)
+{
+  int _size = strlen(node->interaction->msgsig.op)+strlen("buf")+strlen("_r")+1;
+  char *size = (char *)calloc(_size, sizeof(char));
+  sprintf(size, "buf%s%u_r", node->interaction->msgsig.op, idx);
+  return size;
+}
+
+
 st_node *next_interaction(st_node *node)
 {
   switch (node->type) {
     case ST_NODE_ROOT:
     case ST_NODE_RECUR:
     case ST_NODE_FOR:
+#ifdef PABBLE_DYNAMIC
     case ST_NODE_ONEOF:
       if (node->nchild > 1) return next_interaction(node->children[0]);
+#endif
     case ST_NODE_SEND:
     case ST_NODE_RECV:
       return node;
